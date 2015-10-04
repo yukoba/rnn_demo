@@ -64,7 +64,7 @@ def predict_ball(hidden_nodes, is_elman=True, training_data=16, epoch=-1, parame
     # training network
     err1 = 0
     if epoch < 0:
-        trainer = BackpropTrainer(n, training_ds[0], learningrate=2e-4, verbose=True)
+        trainer = BackpropTrainer(n, training_ds[0], learningrate=3e-4, weightdecay=1e-2, verbose=True)
         err1 = trainer.trainEpochs(20000)
     else:
         trainer = BackpropTrainer(n, **parameters)
@@ -193,8 +193,8 @@ def eval_parameter_effect(hidden_nodes, parameter_array, is_elman=True, training
 
 
 def run(is_elman=True):
-    nodes = 20
-    p, r, e1, e2 = predict_ball(nodes, is_elman=is_elman, training_data=16, predict_count=16)
+    nodes = 128
+    p, r, e1, e2 = predict_ball(nodes, is_elman=is_elman, training_data=32, predict_count=32)
     # p, r, e1, e2 = predict_ball(nodes, is_elman=is_elman, training_data=1000, epoch=2000)
     # print("training error:{0}, test error:{1}".format(e1, describe_err(e2)))
     """

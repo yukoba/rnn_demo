@@ -1,13 +1,30 @@
-import sys
 import json
 from statistics import median
 import numpy as np
-from pybrain.structure import LinearLayer, TanhLayer, BiasUnit
+from pybrain.structure import LinearLayer, ReluLayer, BiasUnit
 from pybrain.structure import FullConnection
 from pybrain.structure import RecurrentNetwork
 from pybrain.datasets import SequentialDataSet
 from pybrain.supervised.trainers import BackpropTrainer
 import data.ball_data as ball_data
+from pybrain.structure.modules.neuronlayer import NeuronLayer
+
+
+class HardTanhLayer(NeuronLayer):
+    def _forwardImplementation(self, inbuf, outbuf):
+        outbuf[:] = np.maximum(0, np.minimum(1, inbuf))
+
+    def _backwardImplementation(self, outerr, inerr, outbuf, inbuf):
+        inerr[:] = ((np.sign(outbuf) - np.sign(outbuf - 1)) / 2) * outerr
+
+
+class AbsLayer(NeuronLayer):
+    def _forwardImplementation(self, inbuf, outbuf):
+        outbuf[:] = np.absolute(inbuf)
+
+    def _backwardImplementation(self, outerr, inerr, outbuf, inbuf):
+        inerr[:] = np.sign(outbuf) * outerr
+
 
 BOX_SIZE = 10
 
@@ -47,8 +64,7 @@ def predict_ball(hidden_nodes, is_elman=True, training_data=16, epoch=-1, parame
     # training network
     err1 = 0
     if epoch < 0:
-        trainer = BackpropTrainer(n, training_ds[0], learningrate=2e-4, lrdecay=0.99992,
-                                  verbose=True, batchlearning=True)
+        trainer = BackpropTrainer(n, training_ds[0], learningrate=2e-4, verbose=True)
         err1 = trainer.trainEpochs(20000)
     else:
         trainer = BackpropTrainer(n, **parameters)
@@ -87,7 +103,7 @@ def construct_network(hidden_nodes, is_elman=True):
     n = RecurrentNetwork()
     n.addInputModule(LinearLayer(4, name="i"))
     n.addModule(BiasUnit("b"))
-    n.addModule(TanhLayer(hidden_nodes, name="h"))
+    n.addModule(ReluLayer(hidden_nodes, name="h"))
     n.addOutputModule(LinearLayer(4, name="o"))
 
     n.addConnection(FullConnection(n["i"], n["h"]))
@@ -103,6 +119,7 @@ def construct_network(hidden_nodes, is_elman=True):
         n.addRecurrentConnection(FullConnection(n["o"], n["h"]))
 
     n.sortModules()
+    n.stdParams = 0.03
     n.randomize()
 
     return n

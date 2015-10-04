@@ -61,19 +61,20 @@ def gen_velocity(box_size):
 
 
 def __move(p, v,  box_size):
-    next_v = np.array(v)
+    epsilon = 1e-5
+    next_v = np.array(v, dtype=float)
 
-    if p[0] <= 0:
+    if p[0] <= epsilon:
         # hit left wall
         next_v[0] = CoR * abs(v[0])
-    elif p[0] >= box_size:
+    elif p[0] >= box_size - epsilon:
         # hit right wall
         next_v[0] = - CoR * abs(v[0])
 
-    if p[1] <= 0:
+    if p[1] <= epsilon:
         # hit bottom wall
         next_v[1] = CoR * abs(v[1])
-    elif p[1] >= box_size:
+    elif p[1] >= box_size - epsilon:
         # hit top wall
         next_v[1] = - CoR * abs(v[1])
 

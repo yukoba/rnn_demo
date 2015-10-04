@@ -2,50 +2,54 @@ import sys
 import json
 from statistics import median
 import numpy as np
-from pybrain.structure import LinearLayer, SigmoidLayer, BiasUnit
+from pybrain.structure import LinearLayer, TanhLayer, BiasUnit
 from pybrain.structure import FullConnection
 from pybrain.structure import RecurrentNetwork
-from pybrain.datasets import SupervisedDataSet
+from pybrain.datasets import SequentialDataSet
 from pybrain.supervised.trainers import BackpropTrainer
 import data.ball_data as ball_data
-
 
 BOX_SIZE = 10
 
 
-def predict_ball(hidden_nodes, is_elman=True, training_data=5000, epoch=-1, parameters={}, predict_count=128):
-
+def predict_ball(hidden_nodes, is_elman=True, training_data=16, epoch=-1, parameters={}, predict_count=16):
     # build rnn
     n = construct_network(hidden_nodes, is_elman)
 
     # make training data
     ep = 1 if epoch < 0 else epoch
-    initial_v = ball_data.gen_velocity(BOX_SIZE)
-    data_set = ball_data.bounce_ball((training_data + 1) * ep, BOX_SIZE, None, initial_v=initial_v)
+    initial_p = [9., 7.]
+    initial_v = [1., 1.]
+    # initial_v = ball_data.gen_velocity(BOX_SIZE)
+    data_set = ball_data.bounce_ball((training_data + 1) * ep, BOX_SIZE, initial_p=initial_p, initial_v=initial_v)
     total_avg = np.average(data_set, axis=0)
     total_std = np.std(data_set, axis=0)
+    total_std[2] = 1.
+    total_std[3] = 1.
     # initial_p = data_set[np.random.choice(range(training_data))][:2]
 
     training_ds = []
-    normalized_d = __normalize(data_set)
+    print("data_set = {}".format(data_set))
+    normalized_d = __normalize(data_set, total_avg, total_std)
+    # print("normalized_d = {}".format(normalized_d))
     for e_index in range(ep):
-        t_ds = SupervisedDataSet(4, 4)
+        t_ds = SequentialDataSet(4, 4)
+        t_ds.newSequence()
         e_begin = e_index * training_data
-        for j in range(e_begin,  e_begin + training_data):
+        for j in range(e_begin, e_begin + training_data):
             # from current, predict next
-            p_in = normalized_d[j].tolist()
+            p_in = normalized_d[0].tolist()
             p_out = normalized_d[j + 1].tolist()
             t_ds.addSample(p_in, p_out)
 
         training_ds.append(t_ds)
 
-    del data_set  # release memory
-
     # training network
     err1 = 0
     if epoch < 0:
-        trainer = BackpropTrainer(n, training_ds[0], **parameters)
-        err1 = trainer.train()
+        trainer = BackpropTrainer(n, training_ds[0], learningrate=2e-4, lrdecay=0.99992,
+                                  verbose=True, batchlearning=True)
+        err1 = trainer.trainEpochs(20000)
     else:
         trainer = BackpropTrainer(n, **parameters)
         epoch_errs = []
@@ -55,21 +59,20 @@ def predict_ball(hidden_nodes, is_elman=True, training_data=5000, epoch=-1, para
 
         err1 = max(epoch_errs)
 
-    del training_ds  # release memory
-
     # predict
-    initial_p = ball_data.gen_position(BOX_SIZE)
     predict = None
     next_pv = np.hstack((initial_p, initial_v))
 
     n.reset()
     for i in range(predict_count):
         predict = next_pv if predict is None else np.vstack((predict, next_pv))
+        # print("predict = {}".format(predict))
 
-        p_normalized = (next_pv - total_avg) / total_std
+        p_normalized = (data_set[0] - total_avg) / total_std
         next_pv = n.activate(p_normalized.tolist())
         restored = np.array(next_pv) * total_std + total_avg
         next_pv = restored
+        print("restored, answer = {}, {}".format(restored, data_set[i + 1]))
 
     real = ball_data.bounce_ball(predict_count, BOX_SIZE, initial_p, initial_v)
     err_matrix = (predict - real) ** 2
@@ -84,7 +87,7 @@ def construct_network(hidden_nodes, is_elman=True):
     n = RecurrentNetwork()
     n.addInputModule(LinearLayer(4, name="i"))
     n.addModule(BiasUnit("b"))
-    n.addModule(SigmoidLayer(hidden_nodes, name="h"))
+    n.addModule(TanhLayer(hidden_nodes, name="h"))
     n.addOutputModule(LinearLayer(4, name="o"))
 
     n.addConnection(FullConnection(n["i"], n["h"]))
@@ -100,13 +103,13 @@ def construct_network(hidden_nodes, is_elman=True):
         n.addRecurrentConnection(FullConnection(n["o"], n["h"]))
 
     n.sortModules()
-    n.reset()
+    n.randomize()
 
     return n
 
 
-def __normalize(data):
-    normalized = (data - np.average(data, axis=0)) / np.std(data, axis=0)
+def __normalize(data, total_avg, total_std):
+    normalized = (data - total_avg) / total_std
     return normalized
 
 
@@ -173,17 +176,17 @@ def eval_parameter_effect(hidden_nodes, parameter_array, is_elman=True, training
 
 
 def run(is_elman=True):
-    nodes = 4
-    p, r, e1, e2 = predict_ball(nodes, is_elman=is_elman, training_data=20000)
+    nodes = 20
+    p, r, e1, e2 = predict_ball(nodes, is_elman=is_elman, training_data=16, predict_count=16)
     # p, r, e1, e2 = predict_ball(nodes, is_elman=is_elman, training_data=1000, epoch=2000)
-    print("training error:{0}, test error:{1}".format(e1, describe_err(e2)))
+    # print("training error:{0}, test error:{1}".format(e1, describe_err(e2)))
     """
     for x in p:
         print("{0}, {1}".format(x[0], x[1]))
     """
 
-    ball_data.show_animation([r], BOX_SIZE)
-    ball_data.show_animation([p], BOX_SIZE)
+    # ball_data.show_animation([r], BOX_SIZE)
+    # ball_data.show_animation([p], BOX_SIZE)
 
 
 def main(is_elman=True):
@@ -198,11 +201,11 @@ def main(is_elman=True):
     for lr in range(1, 11):
         eval_parameter_effect(4, [{"learningrate": lr / 1000}], is_elman=False)
     """
-    run(False)
+    run(is_elman)
 
 
 if __name__ == "__main__":
-    if len(sys.argv) > 1 and sys.argv[1] == "E":
-        main(True)
-    else:
-        main(False)
+    # if len(sys.argv) > 1 and sys.argv[1] == "E":
+    # main(True)
+    # else:
+    main(True)
